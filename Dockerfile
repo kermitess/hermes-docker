@@ -28,7 +28,4 @@ RUN npm install -g @anthropic-ai/claude-code
 
 RUN npm install -g opencode-ai@latest
 
-RUN cd /opt/hermes/ui-tui \
- && npm run build
-
 ENV HERMES_TUI_DIR=/opt/hermes/ui-tui
