@@ -28,7 +28,8 @@ RUN npm install -g @anthropic-ai/claude-code
 
 RUN npm install -g opencode-ai@latest
 
-RUN cd /opt/hermes/ui-tui \
- && npm run build
-
+# v0.22.7 base image bakes a prebuilt TUI bundle at /opt/hermes/ui-tui
+# (dist/entry.js) and no longer ships the frontend build deps (esbuild),
+# so an in-fork `npm run build` fails with "Missing prepared esbuild
+# dependency" and is redundant.
 ENV HERMES_TUI_DIR=/opt/hermes/ui-tui
