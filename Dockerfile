@@ -1,4 +1,4 @@
-FROM nousresearch/hermes-agent:v2026.7.1
+FROM nousresearch/hermes-agent:v0.23.2
 
 USER root
 
@@ -18,7 +18,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # creates $HERMES_HOME/cron/venv on demand and installs user requirements there.
 COPY docker/hermes-cron-python /usr/local/bin/hermes-cron-python
 
-RUN python3 -c "from pathlib import Path; p = Path('/opt/hermes/cron/scheduler.py'); s = p.read_text(); old = '[sys.executable, str(path)]'; new = '[\"/usr/local/bin/hermes-cron-python\", str(path)]'; assert old in s or new in s; p.write_text(s.replace(old, new, 1))"
+COPY docker/patch-cron-python /usr/local/bin/patch-cron-python
+
+RUN python3 /usr/local/bin/patch-cron-python
 
 RUN chmod 0755 /usr/local/bin/hermes-cron-python
 
@@ -28,7 +30,9 @@ RUN npm install -g @anthropic-ai/claude-code
 
 RUN npm install -g opencode-ai@latest
 
-RUN cd /opt/hermes/ui-tui \
- && npm run build
-
+# v0.22.x+ base images bake a prebuilt TUI bundle at /opt/hermes/ui-tui
+# (dist/entry.js) and no longer ship the frontend build deps (esbuild),
+# so an in-fork `npm run build` fails with "Missing prepared esbuild
+# dependency" and is redundant. Still true in v0.23.2.
 ENV HERMES_TUI_DIR=/opt/hermes/ui-tui
+

@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Point user cron scripts at the fork's user-owned venv wrapper.
+
+Hermes runs ``.py`` cron job scripts with its own interpreter, which makes user
+scripts depend on (and pollute) the image's /opt/hermes venv. The fork ships
+``/usr/local/bin/hermes-cron-python``, which creates ``$HERMES_HOME/cron/venv``
+on demand and installs the job's requirements there.
+
+This patch is applied at image build time. It knows two upstream layouts:
+
+* v0.22.6+ — ``cron/scheduler_script.py``, ``_script_argv()``.
+* older    — ``cron/scheduler.py``, literal ``[sys.executable, str(path)]``.
+
+Both patches are idempotent (marker comment) and fail loudly if upstream moves
+again, so a silent no-op can never ship a broken image.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+WRAPPER = "/usr/local/bin/hermes-cron-python"
+MARKER = "HERMES_CRON_WRAPPER"
+ROOT = Path(os.environ.get("HERMES_ROOT", "/opt/hermes"))
+
+NEW_LAYOUT = ROOT / "cron" / "scheduler_script.py"
+LEGACY_LAYOUT = ROOT / "cron" / "scheduler.py"
+
+ANCHOR = '    if path.suffix.lower() in {".sh", ".bash"}:\n'
+
+
+def _patch_new(path: Path) -> bool:
+    source = path.read_text()
+    if MARKER in source:
+        print(f"[patch-cron-python] {path}: already patched")
+        return True
+    if ANCHOR not in source:
+        print(f"[patch-cron-python] {path}: anchor not found", file=sys.stderr)
+        return False
+
+    injection = (
+        f"    # {MARKER}: run user .py cron scripts under the fork's user-owned venv\n"
+        "    # wrapper instead of Hermes' own interpreter.\n"
+        '    if path.suffix.lower() not in {".sh", ".bash"} and not (\n'
+        "        isinstance(interpreter, str) and interpreter.strip()\n"
+        "    ):\n"
+        f'        return ["{WRAPPER}", str(path)], {{}}, None\n'
+    )
+    path.write_text(source.replace(ANCHOR, injection + ANCHOR, 1))
+    print(f"[patch-cron-python] {path}: patched _script_argv()")
+    return True
+
+
+def _patch_legacy(path: Path) -> bool:
+    source = path.read_text()
+    if WRAPPER in source:
+        print(f"[patch-cron-python] {path}: already patched")
+        return True
+
+    old = "[sys.executable, str(path)]"
+    new = f'["{WRAPPER}", str(path)]'
+    if old not in source:
+        print(f"[patch-cron-python] {path}: anchor not found", file=sys.stderr)
+        return False
+
+    path.write_text(source.replace(old, new, 1))
+    print(f"[patch-cron-python] {path}: patched legacy invocation")
+    return True
+
+
+def main() -> int:
+    if NEW_LAYOUT.is_file():
+        ok = _patch_new(NEW_LAYOUT)
+        targets = [NEW_LAYOUT]
+    elif LEGACY_LAYOUT.is_file():
+        ok = _patch_legacy(LEGACY_LAYOUT)
+        targets = [LEGACY_LAYOUT]
+    else:
+        print(
+            f"[patch-cron-python] no cron scheduler module under {ROOT}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not ok:
+        return 1
+
+    # Make sure the patched module still compiles before it ships in the image.
+    for target in targets:
+        compile(target.read_text(), str(target), "exec")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
