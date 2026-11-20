@@ -1,4 +1,4 @@
-FROM nousresearch/hermes-agent:v0.23.2
+FROM nousresearch/hermes-agent:v0.23.3
 
 USER root
 
@@ -33,6 +33,6 @@ RUN npm install -g opencode-ai@latest
 # v0.22.x+ base images bake a prebuilt TUI bundle at /opt/hermes/ui-tui
 # (dist/entry.js) and no longer ship the frontend build deps (esbuild),
 # so an in-fork `npm run build` fails with "Missing prepared esbuild
-# dependency" and is redundant. Still true in v0.23.2.
+# dependency" and is redundant. Still true in v0.23.3.
 ENV HERMES_TUI_DIR=/opt/hermes/ui-tui
 
